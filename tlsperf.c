@@ -50,8 +50,13 @@ static void print_usage(const char *prog) {
         prog, prog, prog);
 }
 
-int main(int argc, char **argv) {
-    if (argc < 2) { print_usage(argv[0]); return 1; }
+int
+main(int argc, char **argv)
+{
+    if (argc < 2) {
+        print_usage(argv[0]);
+        return 1;
+    }
 
     const char *host = argv[1];
     const char *servername = NULL;
@@ -65,34 +70,59 @@ int main(int argc, char **argv) {
     int set_affinity_auto = 0;
 
     for (int i = 2; i < argc; ++i) {
-        if ((strcmp(argv[i], "-p") == 0) && i + 1 < argc) port = atoi(argv[++i]);
-        else if ((strcmp(argv[i], "-n") == 0) && i + 1 < argc) count = atoi(argv[++i]);
-        else if ((strcmp(argv[i], "-c") == 0) && i + 1 < argc) total_concurrency = atoi(argv[++i]);
-        else if ((strcmp(argv[i], "-T") == 0) && i + 1 < argc) threads = atoi(argv[++i]);
-        else if ((strcmp(argv[i], "-t") == 0) && i + 1 < argc) timeout_sec = atoi(argv[++i]);
-        else if ((strcmp(argv[i], "-k") == 0)) skip_verify = 1;
-        else if ((strcmp(argv[i], "-s") == 0) && i + 1 < argc) servername = argv[++i];
-        else if ((strcmp(argv[i], "-C") == 0) && i + 1 < argc) cipher_str = argv[++i];
+        if ((strcmp(argv[i], "-p") == 0) && i + 1 < argc)
+            port = atoi(argv[++i]);
+        else if ((strcmp(argv[i], "-n") == 0) && i + 1 < argc)
+            count = atoi(argv[++i]);
+        else if ((strcmp(argv[i], "-c") == 0) && i + 1 < argc)
+            total_concurrency = atoi(argv[++i]);
+        else if ((strcmp(argv[i], "-T") == 0) && i + 1 < argc)
+            threads = atoi(argv[++i]);
+        else if ((strcmp(argv[i], "-t") == 0) && i + 1 < argc)
+            timeout_sec = atoi(argv[++i]);
+        else if ((strcmp(argv[i], "-k") == 0))
+            skip_verify = 1;
+        else if ((strcmp(argv[i], "-s") == 0) && i + 1 < argc)
+            servername = argv[++i];
+        else if ((strcmp(argv[i], "-C") == 0) && i + 1 < argc)
+            cipher_str = argv[++i];
         else if ((strcmp(argv[i], "-A") == 0) && i + 1 < argc) {
-            if (strcmp(argv[i+1], "auto") == 0) { set_affinity_auto = 1; i++; }
-            else { fprintf(stderr, "Unsupported -A value: %s\n", argv[i+1]); return 1; }
+            if (strcmp(argv[i+1], "auto") == 0) {
+                set_affinity_auto = 1;
+                i++;
+            } else {
+                fprintf(stderr, "Unsupported -A value: %s\n", argv[i+1]);
+                return 1;
+            }
+        } else if ((strcmp(argv[i], "-h") == 0)
+                   || (strcmp(argv[i], "--help") == 0))
+        {
+            print_usage(argv[0]);
+            return 0;
+        } else if (strcmp(argv[i], "--version") == 0) {
+            printf("%s version %s\n", argv[0], PACKAGE_VERSION);
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown arg: %s\n\n", argv[i]);
+            print_usage(argv[0]);
+            return 1;
         }
-        else if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) { print_usage(argv[0]); return 0; }
-        else if (strcmp(argv[i], "--version") == 0) { printf("%s version %s\n", argv[0], PACKAGE_VERSION); return 0; }
-        else { fprintf(stderr, "Unknown arg: %s\n\n", argv[i]); print_usage(argv[0]); return 1; }
     }
 
-    if (total_concurrency < 1) total_concurrency = 1;
+    if (total_concurrency < 1)
+        total_concurrency = 1;
 
     if (threads <= 0) {
         long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
         threads = (nprocs > 0) ? (int)nprocs : 1;
     }
-    if (threads < 1) threads = 1;
+    if (threads < 1)
+        threads = 1;
 
     int base_slots = total_concurrency / threads;
     int rem = total_concurrency % threads;
-    if (base_slots < 1) base_slots = 1;
+    if (base_slots < 1)
+        base_slots = 1;
 
     char portstr[16];
     snprintf(portstr, sizeof(portstr), "%d", port);
@@ -103,7 +133,11 @@ int main(int argc, char **argv) {
     hints.ai_socktype = SOCK_STREAM;
 
     int gai = getaddrinfo(host, portstr, &hints, &res);
-    if (gai != 0) { fprintf(stderr, "getaddrinfo(%s:%s) failed: %s\n", host, portstr, gai_strerror(gai)); return 1; }
+    if (gai != 0) {
+        fprintf(stderr, "getaddrinfo(%s:%s) failed: %s\n", host, portstr,
+                gai_strerror(gai));
+        return 1;
+    }
 
     /* Block signals and create signalfd before creating threads.
      * This ensures signals are delivered to signalfd rather than arbitrary threads.
@@ -137,7 +171,15 @@ int main(int argc, char **argv) {
 
     pthread_t *tids = calloc((size_t)threads, sizeof(pthread_t));
     struct worker_args *wargs = calloc((size_t)threads, sizeof(struct worker_args));
-    if (!tids || !wargs) { perror("calloc threads"); free(tids); free(wargs); freeaddrinfo(res); if (sfd>=0) close(sfd); return 1; }
+    if (!tids || !wargs) {
+        perror("calloc threads");
+        free(tids);
+        free(wargs);
+        freeaddrinfo(res);
+        if (sfd>=0)
+            close(sfd);
+        return 1;
+    }
 
     int approx = (count + threads - 1) / threads;
     int capacity = approx + 16;
@@ -165,15 +207,39 @@ int main(int argc, char **argv) {
         wargs[i].tls_versions = calloc((size_t)capacity, 16);
         wargs[i].successes = 0;
         wargs[i].failures = 0;
-        if (!wargs[i].conn_times || !wargs[i].tls_times || !wargs[i].cipher_names || !wargs[i].tls_versions) {
+
+        if (!wargs[i].conn_times || !wargs[i].tls_times
+            || !wargs[i].cipher_names || !wargs[i].tls_versions)
+        {
             perror("calloc per-thread arrays");
-            for (int j = 0; j <= i; ++j) { free(wargs[j].conn_times); free(wargs[j].tls_times); free(wargs[j].cipher_names); free(wargs[j].tls_versions); }
-            free(tids); free(wargs); freeaddrinfo(res); if (sfd>=0) close(sfd); return 1;
+            for (int j = 0; j <= i; ++j) {
+                free(wargs[j].conn_times);
+                free(wargs[j].tls_times);
+                free(wargs[j].cipher_names);
+                free(wargs[j].tls_versions);
+            }
+            free(tids);
+            free(wargs);
+            freeaddrinfo(res);
+            if (sfd >= 0)
+                close(sfd);
+            return 1;
         }
+
         if (pthread_create(&tids[i], NULL, worker_run, &wargs[i]) != 0) {
             perror("pthread_create");
-            for (int j = 0; j <= i; ++j) { free(wargs[j].conn_times); free(wargs[j].tls_times); free(wargs[j].cipher_names); free(wargs[j].tls_versions); }
-            free(tids); free(wargs); freeaddrinfo(res); if (sfd>=0) close(sfd); return 1;
+            for (int j = 0; j <= i; ++j) {
+                free(wargs[j].conn_times);
+                free(wargs[j].tls_times);
+                free(wargs[j].cipher_names);
+                free(wargs[j].tls_versions);
+            }
+            free(tids);
+            free(wargs);
+            freeaddrinfo(res);
+            if (sfd>=0)
+                close(sfd);
+            return 1;
         }
     }
 
@@ -183,7 +249,12 @@ int main(int argc, char **argv) {
     int64_t *all_tls = calloc((size_t)count, sizeof(int64_t));
     char *all_ciphers = calloc((size_t)count, 64);
     char *all_versions = calloc((size_t)count, 16);
-    if (!all_conn || !all_tls || !all_ciphers || !all_versions) { perror("calloc all"); if (sfd>=0) close(sfd); return 1; }
+    if (!all_conn || !all_tls || !all_ciphers || !all_versions) {
+        perror("calloc all");
+        if (sfd>=0)
+            close(sfd);
+        return 1;
+    }
 
     for (int i = 0; i < threads; ++i) {
         pthread_join(tids[i], NULL);
@@ -193,8 +264,10 @@ int main(int argc, char **argv) {
         for (int j = 0; j < copy_n && total_recorded < count; ++j) {
             all_conn[total_recorded] = wargs[i].conn_times[j];
             all_tls[total_recorded] = wargs[i].tls_times[j];
-            memcpy(&all_ciphers[total_recorded * 64], &wargs[i].cipher_names[j * 64], 64);
-            memcpy(&all_versions[total_recorded * 16], &wargs[i].tls_versions[j * 16], 16);
+            memcpy(&all_ciphers[total_recorded * 64],
+                   &wargs[i].cipher_names[j * 64], 64);
+            memcpy(&all_versions[total_recorded * 16],
+                   &wargs[i].tls_versions[j * 16], 16);
             total_recorded++;
         }
         free(wargs[i].conn_times);
@@ -203,12 +276,18 @@ int main(int argc, char **argv) {
         free(wargs[i].tls_versions);
     }
 
-    if (sfd >= 0) close(sfd);
+    if (sfd >= 0)
+        close(sfd);
 
-    printf("Target: %s:%d  total=%d  threads=%d  concurrency=%d  timeout=%ds  skip_verify=%s  sni=%s  ciphers=%s\n",
-           host, port, count, threads, total_concurrency, timeout_sec, skip_verify ? "yes":"no", servername?servername:"(none)", cipher_str?cipher_str:"(default)");
+    printf("Target: %s:%d  total=%d  threads=%d  concurrency=%d  timeout=%ds"
+           "  skip_verify=%s  sni=%s  ciphers=%s\n",
+           host, port, count, threads, total_concurrency, timeout_sec,
+           skip_verify ? "yes":"no", servername?servername:"(none)",
+           cipher_str?cipher_str:"(default)");
 
-    printf("\nResults:\n  total attempts: %d\n  successful : %d\n  failed     : %d\n", count, total_success, total_fail);
+    printf("\nResults:\n  total attempts: %d\n  successful : %d\n"
+           "  failed     : %d\n",
+           count, total_success, total_fail);
 
     if (total_recorded > 0) {
         qsort(all_conn, (size_t)total_recorded, sizeof(int64_t), cmp_int64);
@@ -225,11 +304,17 @@ int main(int argc, char **argv) {
         int64_t p90_tls = percentile_int64(all_tls, total_recorded, 90.0);
         int64_t p99_tls = percentile_int64(all_tls, total_recorded, 99.0);
 
-        printf("\nTCP connect (ms):\n  avg: %.3f  min: %" PRId64 "  max: %" PRId64 "\n", avg_conn, all_conn[0], all_conn[total_recorded-1]);
-        printf("  p50: %" PRId64 "  p90: %" PRId64 "  p99: %" PRId64 "\n", p50_conn, p90_conn, p99_conn);
+        printf("\nTCP connect (ms):\n  avg: %.3f  min: %" PRId64 "  "
+               "max: %" PRId64 "\n",
+               avg_conn, all_conn[0], all_conn[total_recorded-1]);
+        printf("  p50: %" PRId64 "  p90: %" PRId64 "  p99: %" PRId64 "\n",
+               p50_conn, p90_conn, p99_conn);
 
-        printf("\nTLS handshake (ms):\n  avg: %.3f  min: %" PRId64 "  max: %" PRId64 "\n", avg_tls, all_tls[0], all_tls[total_recorded-1]);
-        printf("  p50: %" PRId64 "  p90: %" PRId64 "  p99: %" PRId64 "\n", p50_tls, p90_tls, p99_tls);
+        printf("\nTLS handshake (ms):\n  avg: %.3f  min: %" PRId64 "  "
+               "max: %" PRId64 "\n",
+               avg_tls, all_tls[0], all_tls[total_recorded-1]);
+        printf("  p50: %" PRId64 "  p90: %" PRId64 "  p99: %" PRId64 "\n",
+               p50_tls, p90_tls, p99_tls);
 
         struct kv { char name[64]; int cnt; };
         struct kv *ciphers = calloc(256, sizeof(struct kv));
@@ -241,22 +326,42 @@ int main(int argc, char **argv) {
             char *c = &all_ciphers[i * 64];
             if (c && c[0]) {
                 int found = 0;
-                for (int k = 0; k < ciphers_n; ++k) if (strcmp(ciphers[k].name, c) == 0) { ciphers[k].cnt++; found = 1; break; }
-                if (!found) { strncpy(ciphers[ciphers_n].name, c, 63); ciphers[ciphers_n].cnt = 1; ciphers_n++; }
+                for (int k = 0; k < ciphers_n; ++k)
+                    if (strcmp(ciphers[k].name, c) == 0) {
+                        ciphers[k].cnt++;
+                        found = 1;
+                        break;
+                    }
+                if (!found) {
+                    strncpy(ciphers[ciphers_n].name, c, 63);
+                    ciphers[ciphers_n].cnt = 1;
+                    ciphers_n++;
+                }
             }
             char *v = &all_versions[i * 16];
             if (v && v[0]) {
                 int found = 0;
-                for (int k = 0; k < vers_n; ++k) if (strcmp(vers[k].name, v) == 0) { vers[k].cnt++; found = 1; break; }
-                if (!found) { strncpy(vers[vers_n].name, v, 15); vers[vers_n].cnt = 1; vers_n++; }
+                for (int k = 0; k < vers_n; ++k)
+                    if (strcmp(vers[k].name, v) == 0) {
+                        vers[k].cnt++;
+                        found = 1;
+                        break;
+                    }
+                if (!found) {
+                    strncpy(vers[vers_n].name, v, 15);
+                    vers[vers_n].cnt = 1;
+                    vers_n++;
+                }
             }
         }
 
         printf("\nTLS versions distribution:\n");
-        for (int i = 0; i < vers_n; ++i) printf("  %s : %d\n", vers[i].name, vers[i].cnt);
+        for (int i = 0; i < vers_n; ++i)
+            printf("  %s : %d\n", vers[i].name, vers[i].cnt);
 
         printf("\nCipher distribution (unique %d):\n", ciphers_n);
-        for (int i = 0; i < ciphers_n; ++i) printf("  %s : %d\n", ciphers[i].name, ciphers[i].cnt);
+        for (int i = 0; i < ciphers_n; ++i)
+            printf("  %s : %d\n", ciphers[i].name, ciphers[i].cnt);
 
         free(ciphers);
         free(vers);
@@ -264,10 +369,16 @@ int main(int argc, char **argv) {
         printf("  no recorded successful handshakes\n");
     }
 
-    free(all_conn); free(all_tls); free(all_ciphers); free(all_versions);
-    free(tids); free(wargs);
+    free(all_conn);
+    free(all_tls);
+    free(all_ciphers);
+    free(all_versions);
+    free(tids);
+    free(wargs);
     freeaddrinfo(res);
+
     ERR_free_strings();
     EVP_cleanup();
+
     return 0;
 }
